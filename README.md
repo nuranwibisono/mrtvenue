@@ -2,7 +2,7 @@
 
 Peta venue musik di Jakarta Selatan dan sekitarnya, lengkap dengan MRT dan bus terdekat.
 
-**Demo:** https://nuranwibisono.github.io/mrtvenue/
+**Demo:** https://nuranwibisono.github.io/mrtvenue/ 
 
 ## Fitur
 - Peta venue musik, stasiun MRT, dan halte bus
@@ -12,7 +12,7 @@ Peta venue musik di Jakarta Selatan dan sekitarnya, lengkap dengan MRT dan bus t
 
 ## Embed di website
 ```html
-<iframe src="[https://USERNAME.github.io/gigmap-jaksel/](https://nuranwibisono.github.io/mrtvenue/)"
+<iframe src="https://nuranwibisono.github.io/mrtvenue/"
   width="100%" height="640" style="border:0;border-radius:12px"
   loading="lazy" allow="geolocation" title="Gigmap Jaksel"></iframe>
 ```
