@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gigmap Jaksel — Venue musik & akses transportasi</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--bg:#f6f4ee;--card:#fffdf8;--ink:#23211d;--mute:#7a756b;--line:#e2ded3;--org:#e0603a;--mrt:#2f7a9c;--bus:#3c9a5f}
+@media(prefers-color-scheme:dark){:root{--bg:#1c1b19;--card:#262421;--ink:#f1ede4;--mute:#a09a8d;--line:#3a3732}}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column}
+header{padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:20px;letter-spacing:-.02em}h1 b{color:var(--org)}
+header p{margin:2px 0 10px;color:var(--mute);font-size:13px}
+.bar{display:flex;gap:8px;flex-wrap:wrap}
+input[type=search]{flex:1 1 180px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+button{font:inherit;color:var(--ink);background:var(--card);border:0;padding:9px 12px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.loc{border:1px solid var(--line);border-radius:10px}
+main{flex:1;display:grid;grid-template-columns:340px 1fr;min-height:0}
+#list{overflow:auto;border-right:1px solid var(--line);padding:10px}
+#map{min-height:300px}
+.v{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;cursor:pointer}
+.v:hover,.v.on{border-color:var(--org)}
+.v h3{margin:0;font-size:16px}.v small{color:var(--mute)}
+.t{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px}
+.tag{font-size:11px;font-weight:700;color:#fff;border-radius:5px;padding:1px 6px}
+.tag.mrt{background:var(--mrt)}.tag.bus{background:var(--bus)}
+.d{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:13px}
+.d a{display:inline-block;margin-top:6px;background:var(--org);color:#fff;text-decoration:none;padding:7px 12px;border-radius:8px;font-weight:600}
+.pin{width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--org);border:2px solid #fff;box-shadow:0 1px 4px #0006}
+.stn{width:14px;height:14px;border-radius:4px;border:2px solid #fff;box-shadow:0 1px 3px #0006}
+.note{font-size:12px;color:var(--mute);padding:6px 4px 14px}
+@media(max-width:760px){main{grid-template-columns:1fr;grid-template-rows:45% 55%}#list{order:2;border:0;border-top:1px solid var(--line)}#map{order:1}}
+</style>
+</head>
+<body>
+<header>
+  <h1>gig<b>map</b> · Jaksel</h1>
+  <p>11 venue · 13 stasiun MRT · temukan cara tiba lewat MRT atau bus.</p>
+  <div class="bar">
+    <input id="q" type="search" placeholder="Cari venue atau area…" aria-label="Cari venue">
+    <div class="seg" role="group" aria-label="Moda transportasi">
+      <button data-m="all" aria-pressed="true">Semua</button>
+      <button data-m="mrt" aria-pressed="false">MRT</button>
+      <button data-m="bus" aria-pressed="false">Bus</button>
+    </div>
+    <button id="geo" class="loc">📍 Dekat saya</button>
+  </div>
+</header>
+<main>
+  <section id="list" aria-label="Daftar venue"></section>
+  <div id="map" role="application" aria-label="Peta venue"></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* ============ DATA — edit di sini ============
+   Venue & MRT: dari file GeoJSON pengguna. Halte bus: contoh/perkiraan.
+   Tambah venue/halte cukup dengan menambah baris. */
+const VENUES = [
+  {n:"Rossi Musik",area:"Cipete / Fatmawati",c:[-6.283472602821959,106.79578257265507],type:"Venue musik",mrt:"Cipete Raya",d:1000,min:15},
+  {n:"Krapela",area:"Blok M",c:[-6.2453642,106.7975357],type:"Venue musik",mrt:"Blok M",d:200,min:2},
+  {n:"M Bloc Space",area:"Blok M / ASEAN",c:[-6.241519,106.7987725],type:"Venue musik",mrt:"ASEAN",d:400,min:5},
+  {n:"M Bloc Live House",area:"Blok M / ASEAN",c:[-6.2413303,106.798722],type:"Venue musik",mrt:"ASEAN",d:400,min:5},
+  {n:"Taman Martha Tiahahu",area:"Blok M",c:[-6.2432214,106.7987144],type:"Ruang publik",mrt:"Blok M",d:200,min:2},
+  {n:"Taman Kota Peruri",area:"Blok M / ASEAN",c:[-6.2407877,106.7985973],type:"Ruang publik",mrt:"ASEAN",d:300,min:4},
+  {n:"GBK Senayan",area:"Senayan",c:[-6.2209328,106.7990384],type:"Venue musik",mrt:"Senayan",d:1000,min:12},
+  {n:"Istora Senayan",area:"Senayan",c:[-6.2203097,106.8057283],type:"Venue musik",mrt:"Istora",d:500,min:6},
+  {n:"Twin House Blok M",area:"Blok M",c:[-6.2421165,106.7992844],type:"Venue musik",mrt:"Blok M",d:400,min:5},
+  {n:"Bloc Bar",area:"Blok M / ASEAN",c:[-6.2412853,106.7991763],type:"Venue musik",mrt:"ASEAN",d:400,min:5},
+  {n:"The Jaya Pub",area:"Thamrin (Jakarta Pusat)",c:[-6.18656,106.8221679],type:"Venue musik",mrt:"Bundaran HI",d:800,min:9},
+];
+const STOPS = [
+  // MRT Jakarta — koordinat dari file GeoJSON
+  {n:"MRT Lebak Bulus",k:"mrt",c:[-6.2893004,106.7757068]},
+  {n:"MRT Fatmawati Indomaret",k:"mrt",c:[-6.29245,106.79246]},
+  {n:"MRT Cipete Raya",k:"mrt",c:[-6.2782646,106.797322]},
+  {n:"MRT Haji Nawi",k:"mrt",c:[-6.2666813,106.7973327]},
+  {n:"MRT Blok A",k:"mrt",c:[-6.25701,106.79691]},
+  {n:"MRT Blok M BCA",k:"mrt",c:[-6.24447,106.7981]},
+  {n:"MRT ASEAN",k:"mrt",c:[-6.2387143,106.7986087]},
+  {n:"MRT Senayan Mastercard",k:"mrt",c:[-6.2267406,106.8024774]},
+  {n:"MRT Istora Mandiri",k:"mrt",c:[-6.2223613,106.8085887]},
+  {n:"MRT Bendungan Hilir",k:"mrt",c:[-6.215,106.81795]},
+  {n:"MRT Setiabudi Astra",k:"mrt",c:[-6.2088638,106.8214953]},
+  {n:"MRT Dukuh Atas BNI",k:"mrt",c:[-6.2007972,106.8227961]},
+  {n:"MRT Bundaran HI",k:"mrt",c:[-6.1918813,106.8229554]},
+  // TransJakarta — contoh titik utama, koordinat perkiraan (lengkapi dari data GTFS/halte resmi)
+  {n:"Terminal Blok M",k:"bus",c:[-6.2434,106.7992]},
+  {n:"Halte Bundaran Senayan",k:"bus",c:[-6.2265,106.8020]},
+  {n:"Halte Gelora Bung Karno",k:"bus",c:[-6.2175,106.8030]},
+  {n:"Halte Bundaran HI",k:"bus",c:[-6.1950,106.8230]},
+  {n:"Terminal Lebak Bulus",k:"bus",c:[-6.2893,106.7747]},
+  {n:"Terminal Pasar Minggu",k:"bus",c:[-6.2840,106.8445]},
+  {n:"Terminal Ragunan",k:"bus",c:[-6.3120,106.8203]}
+];
+/* =============================================== */
+
+const WALK_M_PER_MIN = 75, DETOUR = 1.3; // estimasi jalan kaki dari jarak garis lurus
+const $ = s => document.querySelector(s);
+const rad = x => x*Math.PI/180;
+function dist(a,b){const R=6371000,dLa=rad(b[0]-a[0]),dLo=rad(b[1]-a[1]);
+  const h=Math.sin(dLa/2)**2+Math.cos(rad(a[0]))*Math.cos(rad(b[0]))*Math.sin(dLo/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));}
+const walk = d => Math.max(1,Math.round(d*DETOUR/WALK_M_PER_MIN));
+const fmt = d => d<1000?Math.round(d)+" m":(d/1000).toFixed(1)+" km";
+function nearest(v,k){let best=null;for(const s of STOPS){if(s.k!==k)continue;const d=dist(v.c,s.c);if(!best||d<best.d)best={s,d};}return best;}
+VENUES.forEach(v=>{
+  const s=STOPS.find(s=>s.k==="mrt"&&s.n.toLowerCase().includes(v.mrt.toLowerCase()));
+  v.mrt={s:s||nearest(v,"mrt").s,d:v.d,min:v.min};
+  v.bus=nearest(v,"bus");});
+
+const map = L.map("map",{zoomControl:true}).setView([-6.245,106.805],13);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+
+const stopLayer = L.layerGroup().addTo(map), venueLayer = L.layerGroup().addTo(map), routeLayer = L.layerGroup().addTo(map);
+const col = {mrt:"var(--mrt)",bus:"var(--bus)"};
+function icon(cls,color,size){return L.divIcon({className:"",html:`<div class="${cls}" style="${color?`background:${color}`:""}"></div>`,iconSize:size,iconAnchor:[size[0]/2,size[1]]});}
+
+let mode="all", query="", sel=null, user=null;
+const markers = new Map();
+
+function drawStops(){
+  stopLayer.clearLayers();
+  STOPS.filter(s=>mode==="all"||s.k===mode).forEach(s=>
+    L.marker(s.c,{icon:L.divIcon({className:"",html:`<div class="stn" style="background:${col[s.k]}"></div>`,iconSize:[14,14]}),title:s.n})
+     .bindTooltip(s.n).addTo(stopLayer));
+}
+function visible(){
+  let r=VENUES.filter(v=>(v.n+" "+v.area+" "+v.type).toLowerCase().includes(query));
+  const key=mode==="bus"?"bus":"mrt";
+  if(user) r.sort((a,b)=>dist(user,a.c)-dist(user,b.c));
+  else if(mode!=="all") r.sort((a,b)=>a[key].d-b[key].d);
+  return r;
+}
+function transitRow(v,k){const t=v[k];return `<div class="t"><span class="tag ${k}">${k.toUpperCase()}</span><span>${t.s.n.replace(/^(MRT|Halte|Terminal)\s/,"$1 ")} · ${fmt(t.d)} · ±${t.min??walk(t.d)} mnt jalan</span></div>`;}
+function render(){
+  const rows=visible();
+  drawStops(); venueLayer.clearLayers(); markers.clear();
+  $("#list").innerHTML = rows.map(v=>{
+    const i=VENUES.indexOf(v),on=sel===i;
+    return `<article class="v${on?" on":""}" data-i="${i}" tabindex="0">
+      <h3>${v.n}</h3><small>${v.area} · ${v.type}${user?` · ${fmt(dist(user,v.c))} dari Anda`:""}</small>
+      ${mode!=="bus"?transitRow(v,"mrt"):""}${mode!=="mrt"?transitRow(v,"bus"):""}
+      ${on?detail(v):""}</article>`;}).join("")
+    + (rows.length?"":`<p class="note">Tidak ada venue yang cocok.</p>`)
+    + `<p class="note">Jarak &amp; waktu MRT mengikuti data GeoJSON sumber (estimasi, belum diverifikasi rute jalan). Bus: garis lurus, ±${DETOUR}× jarak, ${WALK_M_PER_MIN} m/menit; titik bus masih contoh. Jadwal gigs: cek akun resmi venue.</p>`;
+  rows.forEach(v=>{const i=VENUES.indexOf(v);
+    const m=L.marker(v.c,{icon:icon("pin",null,[26,26]),title:v.n}).addTo(venueLayer).on("click",()=>select(i,true));
+    m.bindTooltip(v.n); markers.set(i,m);});
+}
+function detail(v){
+  const [la,lo]=v.c;
+  return `<div class="d">Dari stasiun/halte terdekat, jalan kaki sekitar ${Math.min(v.mrt.min,walk(v.bus.d))}–${Math.max(v.mrt.min,walk(v.bus.d))} menit.<br>
+  <a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${la},${lo}&travelmode=transit">Rute transportasi umum ↗</a></div>`;
+}
+function select(i,scroll){
+  sel=i; const v=VENUES[i]; render();
+  routeLayer.clearLayers();
+  ["mrt","bus"].forEach(k=>{if(mode!=="all"&&mode!==k)return;
+    L.polyline([v.c,v[k].s.c],{color:k==="mrt"?"#2f7a9c":"#3c9a5f",weight:3,dashArray:"6 6"}).addTo(routeLayer);});
+  const pts=[v.c];["mrt","bus"].forEach(k=>{if(mode==="all"||mode===k)pts.push(v[k].s.c);});
+  map.fitBounds(L.latLngBounds(pts).pad(.5),{maxZoom:16});
+  if(scroll)document.querySelector(`[data-i="${i}"]`)?.scrollIntoView({block:"nearest",behavior:"smooth"});
+}
+$("#list").addEventListener("click",e=>{const a=e.target.closest(".v");if(a&&!e.target.closest("a"))select(+a.dataset.i);});
+$("#list").addEventListener("keydown",e=>{if(e.key==="Enter"){const a=e.target.closest(".v");if(a)select(+a.dataset.i);}});
+$("#q").addEventListener("input",e=>{query=e.target.value.trim().toLowerCase();render();});
+document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",()=>{
+  mode=b.dataset.m;document.querySelectorAll(".seg button").forEach(x=>x.setAttribute("aria-pressed",x===b));
+  routeLayer.clearLayers();sel!==null?select(sel):render();}));
+$("#geo").addEventListener("click",()=>{
+  if(!navigator.geolocation){alert("Peramban tidak mendukung lokasi.");return;}
+  navigator.geolocation.getCurrentPosition(p=>{
+    user=[p.coords.latitude,p.coords.longitude];
+    L.circleMarker(user,{radius:8,color:"#fff",weight:2,fillColor:"#d33",fillOpacity:1}).addTo(map).bindTooltip("Lokasi Anda");
+    map.setView(user,14);render();
+  },()=>alert("Izin lokasi ditolak atau tidak tersedia."),{timeout:10000});
+});
+render();
+</script>
+</body>
+</html>
